@@ -12,3 +12,4 @@ uv run manage.py migrate
 
 make lint
 #make test
+ 
