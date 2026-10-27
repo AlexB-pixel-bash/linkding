@@ -1,0 +1,60 @@
+name: Runner
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    env:
+      GITOPS_REPOSITORY: AlexB-pixel-bash/linkding-k8s-manifests
+      GITOPS_BRANCH: main
+      GITOPS_PATH: argocd
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check source code
+        run: |
+          git log -1 --oneline
+          git rev-parse HEAD
+
+      - name: Install uv
+        run: |
+          curl -fLsS https://astral.sh/uv/0.13.5/install.sh -o "$RUNNER_TEMP/install-uv.sh"
+          UV_INSTALL_DIR="$RUNNER_TEMP/uv" UV_NO_MODIFY_PATH=1 sh "$RUNNER_TEMP/install-uv.sh"
+          echo "$RUNNER_TEMP/uv" >> "$GITHUB_PATH"
+
+      - name: Lint and tests
+        run: sh ci/check.sh
+
+
+      - name: Build and publish image
+        env:
+          REGISTRY: ghcr.io
+          REPOSITORY: ${{ github.repository }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          echo "Test /var/run/docker.sock"
+          test -S /var/run/docker.sock
+          podman version
+
+          IMAGE_REPOSITORY=$(printf '%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          IMAGE="${REGISTRY}/${IMAGE_REPOSITORY}:sha-$(git rev-parse HEAD)"
+
+          podman build --layers --build-arg BUILDPLATFORM=linux/amd64 --target linkding --file docker/default.Dockerfile --tag "$IMAGE" .
+
+          printf '%s' "$REGISTRY_TOKEN" | podman login "$REGISTRY" --username "$REGISTRY_USER" --password-stdin
+          podman push "$IMAGE"
+
+          printf 'PUBLISHED_IMAGE=%s\n' "$IMAGE" >> "$GITHUB_ENV"
+          printf 'Published image: %s\n' "$IMAGE"
