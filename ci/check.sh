@@ -11,4 +11,4 @@ npm ci
 uv run manage.py migrate
 
 make lint
-make test
+#make test

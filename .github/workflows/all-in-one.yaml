@@ -58,3 +58,37 @@ jobs:
 
           printf 'PUBLISHED_IMAGE=%s\n' "$IMAGE" >> "$GITHUB_ENV"
           printf 'Published image: %s\n' "$IMAGE"
+      - name: Checkout manifests repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.GITOPS_REPOSITORY }}
+          ref: ${{ env.GITOPS_BRANCH }}
+          # For login to repo k8s manifest. Create on Application repo Secrets! not manifest repo
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops
+          persist-credentials: true
+
+      - name: Update image in manifests repository
+        if: ${{ github.ref == 'refs/heads/master' }}
+        working-directory: gitops/${{ env.GITOPS_PATH }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          echo "Update image"
+          echo "$PUBLISHED_IMAGE"
+          kustomize edit set image "linkding=$PUBLISHED_IMAGE"
+
+          echo "Check manifests"
+          kustomize build . > "$RUNNER_TEMP/linkding-rendered.yaml"
+
+          echo "Change on Git"
+          git diff -- kustomization.yaml
+
+          git config user.name "github-ci"
+          git config user.email "github-ci@local.invalid"
+          git add -- kustomization.yaml
+          git commit -m "Update linkding to ${PUBLISHED_IMAGE##*:}"
+
+          echo "Push changes"
+          git push origin "HEAD:refs/heads/$GITOPS_BRANCH"
