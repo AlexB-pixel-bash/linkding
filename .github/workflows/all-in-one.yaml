@@ -92,3 +92,4 @@ jobs:
 
           echo "Push changes"
           git push origin "HEAD:refs/heads/$GITOPS_BRANCH"
+ 
